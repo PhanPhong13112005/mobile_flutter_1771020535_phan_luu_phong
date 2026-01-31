@@ -1,8 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart'; // Thêm dòng này
 
 class ApiService {
-  // QUAN TRỌNG: Nếu chạy máy ảo Android thì dùng 10.0.2.2
-  // Nếu chạy máy thật hoặc iOS thì phải dùng IP LAN của máy tính (VD: 192.168.1.x)
   static const String baseUrl = "https://luuphong-cntt1708.ddns.net/api";
 
   final Dio _dio = Dio(
@@ -14,70 +13,90 @@ class ApiService {
     ),
   );
 
-  // Hàm đăng nhập
+  // --- 1. ĐĂNG KÝ (MỚI) ---
+  Future<bool> register(String username, String password, String fullName) async {
+    try {
+      final response = await _dio.post('/auth/register', data: {
+        'userName': username,
+        'password': password,
+        'fullName': fullName,
+      });
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Lỗi đăng ký: $e');
+      return false;
+    }
+  }
+
+  // --- 2. ĐĂNG NHẬP (GIỮ NGUYÊN) ---
   Future<String?> login(String username, String password) async {
     try {
       final response = await _dio.post('/auth/login', data: {
         'userName': username,
         'password': password,
       });
-
-      // Trả về Token nếu thành công
       return response.data['token'];
     } catch (e) {
-      print('Lỗi đăng nhập: $e');
       return null;
     }
   }
 
-  // Hàm lấy thông tin user (Số dư ví)
+  // --- 3. LẤY THÔNG TIN USER (GIỮ NGUYÊN) ---
   Future<Map<String, dynamic>?> getUserProfile(String token) async {
     try {
-      _dio.options.headers['Authorization'] = 'Bearer $token'; // Gắn token vào header
+      _dio.options.headers['Authorization'] = 'Bearer $token';
       final response = await _dio.get('/auth/me');
       return response.data;
     } catch (e) {
-      print('Lỗi lấy thông tin: $e');
       return null;
     }
   }
-  // ... (Các hàm login, getUserProfile giữ nguyên)
 
-  // THÊM HÀM NÀY: Gọi API Đặt sân
-  // ... (Các hàm login, getUserProfile giữ nguyên ở trên)
-
-  // 👇 DÁN HÀM NÀY VÀO:
-  Future<bool> bookCourt(String token, int courtId, String startTime, String endTime) async {
+  // --- 4. NẠP TIỀN (MỚI - QUAN TRỌNG ĐỂ DEMO) ---
+  // Yêu cầu đề bài: Nạp tiền kèm ảnh bằng chứng [cite: 130, 183]
+  Future<bool> deposit(String token, double amount, XFile? imageFile) async {
     try {
-      _dio.options.headers['Authorization'] = 'Bearer $token'; // Gắn token để Server biết ai đặt
-      
-      final response = await _dio.post('/bookings', data: {
-        "memberId": 0, // Backend tự lấy ID từ token, gửi 0 cũng được
-        "courtId": courtId,
-        "startTime": startTime, // Định dạng chuẩn: "2026-01-28T08:00:00"
-        "endTime": endTime
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+
+      // Tạo FormData để gửi file ảnh và số tiền
+      FormData formData = FormData.fromMap({
+        "amount": amount,
+        // Nếu API yêu cầu file ảnh (nếu ko có file thì gửi null cũng được để test)
+        if (imageFile != null)
+          "proofImage": await MultipartFile.fromFile(imageFile.path, filename: "proof.jpg"),
       });
 
-      return response.statusCode == 200; // Nếu thành công trả về true
+      // Lưu ý: Endpoint này phải khớp với Backend của bạn (/api/wallet/deposit)
+      final response = await _dio.post('/wallet/deposit', data: formData);
+      return response.statusCode == 200;
     } catch (e) {
-      print('Lỗi đặt sân: $e');
-      if (e is DioException) {
-        print('Chi tiết lỗi Server: ${e.response?.data}');
-      }
-      return false; // Nếu lỗi trả về false
+      print("Lỗi nạp tiền: $e");
+      return false;
     }
   }
-  // ... (Các hàm cũ giữ nguyên)
 
-  // 👇 THÊM HÀM NÀY: Lấy danh sách lịch sử
+  // --- 5. ĐẶT SÂN & LỊCH SỬ (GIỮ NGUYÊN CỦA BẠN) ---
+  Future<bool> bookCourt(String token, int courtId, String startTime, String endTime) async {
+    try {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+      final response = await _dio.post('/bookings', data: {
+        "courtId": courtId,
+        "startTime": startTime,
+        "endTime": endTime
+      });
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<List<dynamic>> getMyBookings(String token) async {
     try {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      final response = await _dio.get('/bookings/my-bookings');
-      return response.data; // Trả về danh sách []
+      final response = await _dio.get('/bookings/my-bookings'); // Đảm bảo API này đúng
+      return response.data;
     } catch (e) {
-      print('Lỗi lấy lịch sử: $e');
-      return []; // Lỗi thì trả về danh sách rỗng
+      return [];
     }
   }
 }
